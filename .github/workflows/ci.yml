@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core (OS-independent, 100% coverage, CGO=0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Gofmt
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: CGO_ENABLED=0 go vet ./...
+      - name: Test (OS-independent core, with coverage)
+        run: CGO_ENABLED=0 go test -count=1 -coverprofile=cover.out ./...
+      - name: Coverage summary
+        run: go tool cover -func=cover.out | tail -1
+      - name: Race (OS-independent core)
+        run: CGO_ENABLED=1 go test -race -count=1 ./...
+
+  windows:
+    name: windows (live glue build + core tests, CGO=0)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Build (Win32 glue)
+        run: go build ./...
+        env:
+          CGO_ENABLED: '0'
+      - name: Vet
+        run: go vet ./...
+        env:
+          CGO_ENABLED: '0'
+      - name: Test (OS-independent core on Windows)
+        run: go test -count=1 ./...
+        env:
+          CGO_ENABLED: '0'
+
+  cross:
+    name: cross-build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Win32 glue builds on both 64-bit Windows targets.
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          # The OS-independent core builds on all six of Go's 64-bit targets.
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: riscv64 }
+          - { goos: linux, goarch: loong64 }
+          - { goos: linux, goarch: ppc64le }
+          - { goos: linux, goarch: s390x }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Build
+        run: go build ./...
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
