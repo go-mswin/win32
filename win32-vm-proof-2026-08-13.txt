@@ -1,0 +1,34 @@
+go-mswin/win32 — live proof on the Win11 ARM64 QEMU VM (build 26200), 2026-08-13
+Cross-compiled here (GOOS=windows GOARCH=arm64, go test -c), run on the VM.
+
+CONTROL-FIRST DISCIPLINE
+  Baseline desktop screendumped (no window) before any launch, so a rendered
+  window is unmistakably ours. Then a solid-MAGENTA witness run (control: proves
+  the CreateWindowEx + wndproc + StretchDIBitsBGRA path and that a saturated
+  colour reaches the ramfb) BEFORE the four-quadrant instrument run (which alone
+  disambiguates channel order and orientation — magenta is R/B-symmetric).
+
+RUN / PASS / SKIP
+  TestLiveMessagePump  PASS  (ssh, session 0 — no desktop needed)
+      hidden HWND_MESSAGE window via NewMessageWindow, PostMessage(WMApp+1,
+      0xDEAD), Pump; the window procedure received wParam=0xdead and
+      PostQuitMessage ended the pump. Proves: lazy DLL/proc binding,
+      RegisterClassEx, CreateWindowEx(HWNDMessage), NewCallback, PostMessage,
+      GetMessage/TranslateMessage/DispatchMessage, DefWindowProc, PostQuitMessage.
+
+  TestLiveBlit (witness)   PASS  (interactive session 1 via schtasks /IT)
+      solid magenta fill — window renders on the desktop; blit path works.
+      -> win32-blit-witness-2026-08-13.png
+
+  TestLiveBlit (quadrant)  PASS  (interactive session 1 via schtasks /IT)
+      TL=red TR=green BL=blue BR=white, EXACTLY as authored.
+      Red renders red (not blue) => BGRA channel order correct.
+      Red is at the TOP (not bottom) => negative-biHeight top-down DIB correct.
+      -> win32-blit-quadrant-2026-08-13.png
+
+  No lane was skipped as a pass; each live test t.Skip's ONLY when its outer
+  env gate (WIN32_LIVE / WIN32_LIVE_BLIT) is unset, per feedback-a-skip-is-not-a-pass.
+
+NOTE: the unsigned Go test binary tripped a Defender cloud false-positive at one
+hash; a -trimpath -ldflags="-s -w" rebuild got a fresh verdict and ran. Defender
+was NOT disabled or excluded.

@@ -22,6 +22,7 @@ package win32_test
 
 import (
 	"os"
+	"strconv"
 	"testing"
 	"time"
 	"unsafe"
@@ -171,8 +172,14 @@ func TestLiveBlit(t *testing.T) {
 	procUpdateWindow.Call(uintptr(hwnd))
 
 	// Hold the window open (draining messages non-blockingly so it repaints)
-	// long enough to screendump the ramfb.
-	deadline := time.Now().Add(8 * time.Second)
+	// long enough to screendump the ramfb. WIN32_BLIT_HOLD overrides the seconds.
+	holdSec := 30
+	if v := os.Getenv("WIN32_BLIT_HOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			holdSec = n
+		}
+	}
+	deadline := time.Now().Add(time.Duration(holdSec) * time.Second)
 	var m win32.Msg
 	for time.Now().Before(deadline) {
 		r, _, _ := procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, pmRemove)
