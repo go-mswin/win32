@@ -17,8 +17,12 @@ fleet currently hand-rolls in more than one place:
 - **device contexts and GDI objects**: `GetDC` / `GetWindowDC` / `ReleaseDC`,
   `CreateCompatibleDC` / `DeleteDC`, `SelectObject` / `DeleteObject`,
   `BitBlt` / `StretchBlt` / `PatBlt`, `SetStretchBltMode`, `GetDeviceCaps`
-- **display enumeration**: `EnumDisplayMonitors` (one shared, non-leaking
-  callback trampoline), `GetMonitorInfo` (`MONITORINFOEXW`, `cbSize` set for
+- **callback-driven enumeration**: `EnumDisplayMonitors` and `EnumWindows`,
+  each with ONE process-wide trampoline. `windows.NewCallback` allocates out of
+  a pool the runtime caps at 2000 and going past it is `runtime.throw`, not a
+  recoverable panic — so a wrapper that builds its callback per call puts a
+  hard ceiling on how many times an application may ask, and then kills it
+- **display enumeration**: `GetMonitorInfo` (`MONITORINFOEXW`, `cbSize` set for
   you — a wrong one is silently rejected), `EnumDisplayDevices` /
   `DisplayAdapters` / `DisplayMonitors` for the adapter and panel names,
   `GetDpiForMonitor` off `shcore`, `MonitorFromWindow`, and
@@ -28,7 +32,8 @@ fleet currently hand-rolls in more than one place:
   `InvalidateRect`, `SetWindowPos`, `SetForegroundWindow`,
   `GetForegroundWindow`, `GetWindowRect`, `GetClientRect`, `IsWindow`,
   `IsWindowVisible`, `IsIconic`, `GetWindowText`, `GetClassName`,
-  `GetWindowLongPtr` / `SetWindowLongPtr` (which `x/sys/windows` does not wrap)
+  `GetWindowLongPtr` / `SetWindowLongPtr` (which `x/sys/windows` does not wrap),
+  `GetWindowThreadProcessID`
 
 ## Consumers
 `go-widgets/tray`, `go-widgets/window` (win32 backend), `go-mswin/screencapture`,
@@ -41,6 +46,12 @@ The live glue is proven on a real Windows machine and the record is committed:
 `win32-vm-proof-2026-08-13.txt` (message pump, BGRA blit) and
 `win32-display-vm-proof-2026-08-25.txt` (display enumeration, compared field by
 field against `System.Windows.Forms.Screen` and `dxdiag`).
+
+The callback ceiling is guarded by an **ungated** test —
+`TestEnumerationsDoNotConsumeACallbackPerCall` runs 3000 walks of each
+enumeration on every Windows CI lane. It needs no desktop. With a trampoline
+per call it does not fail; the test binary dies partway through, which is the
+shape of the defect.
 
 ## License
 BSD-3-Clause — copyright the go-mswin authors.

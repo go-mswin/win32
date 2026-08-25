@@ -10,7 +10,8 @@
 // / RECT / POINT types, a top-down 32-bpp BGRA StretchDIBits blit helper, and
 // the display enumeration (EnumDisplayMonitors / GetMonitorInfoW /
 // EnumDisplayDevicesW / GetDpiForMonitor) that says which monitors are
-// attached and where they are.
+// attached and where they are, alongside the EnumWindows walk over the
+// top-level windows.
 //
 // Layout mirrors go-macos/objc: the OS-independent core — the types, the Win32
 // constants, the LPARAM word macros and the BGRA packing — lives in UNTAGGED

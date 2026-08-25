@@ -41,6 +41,7 @@ var (
 	procGetWindowLongPtrW    = User32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW    = User32.NewProc("SetWindowLongPtrW")
 	procInvalidateRect       = User32.NewProc("InvalidateRect")
+	procGetWindowThreadPID   = User32.NewProc("GetWindowThreadProcessId")
 
 	procCreateCompatibleDC = Gdi32.NewProc("CreateCompatibleDC")
 	procDeleteDC           = Gdi32.NewProc("DeleteDC")
@@ -342,4 +343,17 @@ func GetWindowLongPtr(hwnd HWND, index int32) uintptr {
 func SetWindowLongPtr(hwnd HWND, index int32, value uintptr) uintptr {
 	r, _, _ := procSetWindowLongPtrW.Call(uintptr(hwnd), uintptr(index), value)
 	return r
+}
+
+// GetWindowThreadProcessID returns the id of the process that owns a window,
+// and of the thread that created it.
+//
+// Both are 0 for a handle that no longer names a window. The process id is
+// what leads to the owning executable, through
+// windows.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) and
+// QueryFullProcessImageName — which x/sys/windows already wraps, and this
+// package therefore does not.
+func GetWindowThreadProcessID(hwnd HWND) (pid, tid uint32) {
+	r, _, _ := procGetWindowThreadPID.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&pid)))
+	return pid, uint32(r)
 }
