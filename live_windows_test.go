@@ -193,3 +193,90 @@ func TestLiveBlit(t *testing.T) {
 	win32.DestroyWindow(hwnd)
 	t.Log("BLIT_DONE window held for screendump")
 }
+
+// TestLiveDisplays proves the display enumeration against the machine it runs
+// on: EnumDisplayMonitors finds the monitors, GetMonitorInfoW describes each
+// one (which is where a wrong cbSize would show up as a blanket FALSE),
+// EnumDisplayDevicesW names the adapter and the panel, and shcore reports the
+// DPI.
+//
+// It prints one line per monitor in a form that can be compared field by field
+// against an instrument that is not this code — Get-CimInstance
+// Win32_VideoController / Win32_DesktopMonitor, or dxdiag's display list.
+//
+// It needs no window, so it runs over ssh in session 0. That is itself worth
+// measuring rather than assuming: a session with no desktop may enumerate no
+// monitors at all, and the test says which it got rather than passing quietly
+// on an empty list.
+func TestLiveDisplays(t *testing.T) {
+	if os.Getenv("WIN32_LIVE_DISPLAYS") != "1" {
+		t.Skip("set WIN32_LIVE_DISPLAYS=1 to enumerate this machine's displays")
+	}
+	// Per-monitor-v2 first: without it every rectangle below is virtualised,
+	// and a 200% panel reports half its pixels perfectly plausibly.
+	t.Logf("DPI_AWARENESS set=%v (false also means it was already set)",
+		win32.SetProcessDPIAwarenessContext(win32.DPIAwarenessPerMonitorV2))
+
+	var mons []win32.HMONITOR
+	var rects []win32.Rect
+	if err := win32.EnumDisplayMonitors(func(m win32.HMONITOR, _ win32.HDC, r win32.Rect) bool {
+		mons = append(mons, m)
+		rects = append(rects, r)
+		return true
+	}); err != nil {
+		t.Fatalf("EnumDisplayMonitors: %v", err)
+	}
+	t.Logf("MONITORS n=%d", len(mons))
+	if len(mons) == 0 {
+		t.Fatal("EnumDisplayMonitors reported no monitor at all")
+	}
+
+	for i, m := range mons {
+		mi, err := win32.GetMonitorInfo(m)
+		if err != nil {
+			// This is what a drifted MONITORINFOEXW layout looks like: the
+			// call fails for every monitor and says nothing about why.
+			t.Fatalf("GetMonitorInfo(%#x): %v", uintptr(m), err)
+		}
+		if mi.RcMonitor != rects[i] {
+			t.Errorf("monitor %d: callback rect %+v != GetMonitorInfo rcMonitor %+v",
+				i, rects[i], mi.RcMonitor)
+		}
+		dpiX, dpiY, dpiErr := win32.GetDpiForMonitor(m, win32.MDTEffectiveDPI)
+		t.Logf("MONITOR %d device=%q primary=%v bounds=%d,%d %dx%d work=%d,%d %dx%d dpi=%dx%d (%v)",
+			i, mi.Device(), mi.Primary(),
+			mi.RcMonitor.Left, mi.RcMonitor.Top, mi.RcMonitor.Width(), mi.RcMonitor.Height(),
+			mi.RcWork.Left, mi.RcWork.Top, mi.RcWork.Width(), mi.RcWork.Height(),
+			dpiX, dpiY, dpiErr)
+
+		for _, mon := range win32.DisplayMonitors(mi.Device(), win32.EDDGetDeviceInterfaceName) {
+			t.Logf("  PANEL name=%q description=%q active=%v mirroring=%v id=%q",
+				mon.Name(), mon.Description(), mon.Active(), mon.Mirroring(), mon.ID())
+		}
+	}
+
+	for i, a := range win32.DisplayAdapters(0) {
+		t.Logf("ADAPTER %d name=%q description=%q attached=%v primary=%v mirroring=%v",
+			i, a.Name(), a.Description(), a.Active(), a.Primary(), a.Mirroring())
+	}
+
+	// A monitor handle that names nothing must fail rather than describing
+	// some other monitor: the error path is as much a part of the binding as
+	// the success one.
+	if _, err := win32.GetMonitorInfo(0); err == nil {
+		t.Error("GetMonitorInfo(0) succeeded, want an error")
+	}
+	// And the callback must be able to stop the walk without that looking
+	// like a failure.
+	seen := 0
+	if err := win32.EnumDisplayMonitors(func(win32.HMONITOR, win32.HDC, win32.Rect) bool {
+		seen++
+		return false
+	}); err != nil {
+		t.Errorf("EnumDisplayMonitors stopped by its callback: %v", err)
+	}
+	if seen != 1 {
+		t.Errorf("callback returning false was called %d times, want 1", seen)
+	}
+	t.Log("DISPLAYS_OK")
+}

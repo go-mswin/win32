@@ -8,7 +8,8 @@ not a bitness (there is no separate "Win64 API").
 Built on `golang.org/x/sys/windows` (no cgo). Provides the shared surface the
 fleet currently hand-rolls in more than one place:
 
-- lazy DLL + proc binding for `user32` / `gdi32` / `kernel32` / `advapi32` / `combase`
+- lazy DLL + proc binding for `user32` / `gdi32` / `kernel32` / `advapi32` /
+  `shell32` / `combase` / `shcore`
 - a hidden message window + `GetMessage`/`TranslateMessage`/`DispatchMessage` pump
 - `WNDCLASSEXW` / `MSG` / rect / point types and the common `CreateWindowExW`,
   `RegisterClassExW`, `DefWindowProcW`, `LoadCursorW`, `PostQuitMessage`, …
@@ -16,6 +17,13 @@ fleet currently hand-rolls in more than one place:
 - **device contexts and GDI objects**: `GetDC` / `GetWindowDC` / `ReleaseDC`,
   `CreateCompatibleDC` / `DeleteDC`, `SelectObject` / `DeleteObject`,
   `BitBlt` / `StretchBlt` / `PatBlt`, `SetStretchBltMode`, `GetDeviceCaps`
+- **display enumeration**: `EnumDisplayMonitors` (one shared, non-leaking
+  callback trampoline), `GetMonitorInfo` (`MONITORINFOEXW`, `cbSize` set for
+  you — a wrong one is silently rejected), `EnumDisplayDevices` /
+  `DisplayAdapters` / `DisplayMonitors` for the adapter and panel names,
+  `GetDpiForMonitor` off `shcore`, `MonitorFromWindow`, and
+  `SetProcessDPIAwarenessContext` with the Per-Monitor-V2 context — without
+  which every rectangle the process reads is virtualised and plausible
 - **window state and geometry**: `ShowWindow`, `UpdateWindow`,
   `InvalidateRect`, `SetWindowPos`, `SetForegroundWindow`,
   `GetForegroundWindow`, `GetWindowRect`, `GetClientRect`, `IsWindow`,
@@ -26,6 +34,13 @@ fleet currently hand-rolls in more than one place:
 `go-widgets/tray`, `go-widgets/window` (win32 backend), `go-mswin/screencapture`,
 and the WinRT plumbing in the weft Windows apps — one owned binding instead of
 duplicated hand-rolls.
+
+## Verification
+
+The live glue is proven on a real Windows machine and the record is committed:
+`win32-vm-proof-2026-08-13.txt` (message pump, BGRA blit) and
+`win32-display-vm-proof-2026-08-25.txt` (display enumeration, compared field by
+field against `System.Windows.Forms.Screen` and `dxdiag`).
 
 ## License
 BSD-3-Clause — copyright the go-mswin authors.
