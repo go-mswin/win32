@@ -7,7 +7,10 @@
 // the lazy DLL + proc bindings for user32/gdi32/kernel32/advapi32/shell32
 // (+ combase for WinRT later), a hidden message window and the standard
 // GetMessage/TranslateMessage/DispatchMessage pump, the common WNDCLASSEXW / MSG
-// / RECT / POINT types, and a top-down 32-bpp BGRA StretchDIBits blit helper.
+// / RECT / POINT types, a top-down 32-bpp BGRA StretchDIBits blit helper, and
+// the display enumeration (EnumDisplayMonitors / GetMonitorInfoW /
+// EnumDisplayDevicesW / GetDpiForMonitor) that says which monitors are
+// attached and where they are.
 //
 // Layout mirrors go-macos/objc: the OS-independent core — the types, the Win32
 // constants, the LPARAM word macros and the BGRA packing — lives in UNTAGGED

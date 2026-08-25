@@ -15,5 +15,9 @@ const (
 	Kernel32DLL = "kernel32.dll"
 	Advapi32DLL = "advapi32.dll"
 	Shell32DLL  = "shell32.dll"
-	CombaseDLL  = "combase.dll"
+	// ShcoreDLL carries the per-monitor DPI query. It is the shell scaling
+	// library rather than a windowing one, and only exists from Windows 8.1,
+	// so anything binding off it must cope with its absence.
+	ShcoreDLL  = "shcore.dll"
+	CombaseDLL = "combase.dll"
 )

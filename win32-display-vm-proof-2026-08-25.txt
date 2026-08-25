@@ -1,0 +1,100 @@
+go-mswin/win32 — display enumeration, live proof on the Win11 ARM64 QEMU VM
+(build 26200.8037), 2026-08-25
+Cross-compiled here (CGO_ENABLED=0 GOOS=windows GOARCH=arm64, go test -c), run
+on the VM. Display: QEMU `ramfb` behind the Microsoft Basic Display Driver,
+800x600, no GPU, ONE monitor.
+
+WHAT WAS RUN
+  TestLiveDisplays, gated on WIN32_LIVE_DISPLAYS=1, launched INTO THE
+  INTERACTIVE SESSION with `schtasks /ru dev /it` (see "session 0" below).
+
+      === RUN   TestLiveDisplays
+          DPI_AWARENESS set=true (false also means it was already set)
+          MONITORS n=1
+          MONITOR 0 device="\\.\DISPLAY1" primary=true
+                    bounds=0,0 800x600 work=0,0 800x552 dpi=96x96 (<nil>)
+            PANEL name="\\.\DISPLAY1\Monitor0"
+                  description="Generic Non-PnP Monitor" active=true
+                  mirroring=false
+                  id="\\?\DISPLAY#Default_Monitor#1&8713bca&0&UID0#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}"
+          ADAPTER 0 name="\\.\DISPLAY1"
+                    description="Microsoft Basic Display Driver"
+                    attached=true primary=true mirroring=false
+          DISPLAYS_OK
+      --- PASS: TestLiveDisplays (0.00s)
+
+  The test also asserts the two things that are silent when wrong: that the
+  rectangle EnumDisplayMonitors hands its callback is the same one
+  GetMonitorInfoW reports (so the RtlMoveMemory copy out of OS memory is
+  reading the right sixteen bytes), and that GetMonitorInfo(0) FAILS rather
+  than describing some other monitor.
+
+TWO INSTRUMENTS THAT ARE NOT THIS CODE
+  System.Windows.Forms.Screen — .NET's own P/Invoke over the same API, in the
+  same interactive session:
+
+      DeviceName   : \\.\DISPLAY1
+      Bounds       : {X=0,Y=0,Width=800,Height=600}
+      WorkingArea  : {X=0,Y=0,Width=800,Height=552}
+      Primary      : True
+
+  Field by field: device name, bounds, work area and primary flag all agree
+  with the run above. The 48-pixel difference between 600 and 552 is the
+  taskbar, and both instruments see it.
+
+  dxdiag /t, same session:
+
+      Card name:     Microsoft Basic Display Driver
+      Current Mode:  800 x 600 (32 bit) (64Hz)
+      Monitor Name:  Generic Non-PnP Monitor
+      Monitor Model: unknown
+      Monitor Id:
+      Native Mode:   unknown
+
+  Card name matches the ADAPTER description exactly and Monitor Name matches
+  the PANEL description exactly.
+
+  Win32_VideoController and Win32_DesktopMonitor report ZERO instances on this
+  machine, in session 0 AND in session 1. The Microsoft Basic Display Driver
+  registers no WMI video-controller instance, so those two classes could not be
+  used as instruments here at all — which is worth writing down, because an
+  empty result from them reads exactly like a machine with no display.
+
+NO EDID ON THIS MACHINE — and three things agree about it
+  The panel's own model name lives in its EDID. This VM has none:
+
+    - dxdiag says Monitor Model: unknown and leaves Monitor Id empty.
+    - Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID, which reads
+      EDID directly, returns NOTHING.
+    - The registry key the panel's device id points at EXISTS —
+      HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY\Default_Monitor\
+      1&8713bca&0&UID0\Device Parameters — and carries no EDID value.
+
+  So the device-id-to-registry derivation is confirmed against a live machine
+  (the key is exactly where the interface path says it is), while the model
+  name itself is NOT proven end to end here. A monitor with a real EDID is
+  needed for that, and this VM cannot provide one.
+
+SESSION 0 — the same trap go-mswin/screencapture documented
+  Run over plain ssh, the identical binary reports:
+
+      MONITORS n=1
+      MONITOR 0 device="WinDisc" primary=true bounds=0,0 1024x768
+                work=0,0 1024x768 dpi=96x96
+      (no PANEL line, no ADAPTER line)
+      DPI_AWARENESS set=false
+
+  `WinDisc` at 1024x768 with no taskbar is the phantom desktop of the
+  non-interactive session, and EnumDisplayDevicesW enumerates NOTHING there —
+  not even the adapter. A test that only ever ran over ssh would report a
+  display that does not exist and an empty device tree, and would pass.
+
+NOT PROVEN HERE
+  - MULTI-MONITOR anything. The VM has one display. Negative coordinates, the
+    primary flag distinguishing two monitors, and two panels sharing a model
+    name are all untested against hardware; the negative-coordinate arithmetic
+    is covered by unit test only.
+  - MIXED DPI. Everything on this machine is 96 dpi (100%), so a run here says
+    nothing about a 150% or 200% panel, and the difference between an aware and
+    an unaware process is invisible at 96 dpi BY DEFINITION.
+  - A REAL EDID, per the section above.
