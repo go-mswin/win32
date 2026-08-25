@@ -147,3 +147,97 @@ func TestPackBGRARectOverrunGuard(t *testing.T) {
 		t.Fatal("unexpected dst length")
 	}
 }
+
+// The handle-shaped constants are NEGATIVE values written as bit expressions
+// so they are correct on both 64-bit targets. A wrong one does not fail to
+// build: SetWindowPos simply restacks the window somewhere unexpected, or
+// silently does nothing.
+func TestWindowPosConstants(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  HWND
+		want int64
+	}{
+		{"HWND_TOP", HWNDTop, 0},
+		{"HWND_BOTTOM", HWNDBottom, 1},
+		{"HWND_TOPMOST", HWNDTopmost, -1},
+		{"HWND_NOTOPMOST", HWNDNoTopmost, -2},
+		{"HWND_MESSAGE", HWNDMessage, -3},
+	} {
+		if got := int64(int(tc.got)); got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The GetWindowLongPtr indices are negative too, and are taken as int32 rather
+// than uintptr for exactly that reason.
+func TestWindowLongIndices(t *testing.T) {
+	for name, got := range map[string]int{
+		"GWL_WNDPROC":   GWLWndProc,
+		"GWL_HINSTANCE": GWLHInstance,
+		"GWL_ID":        GWLID,
+		"GWL_STYLE":     GWLStyle,
+		"GWL_EXSTYLE":   GWLExStyle,
+		"GWL_USERDATA":  GWLUserData,
+	} {
+		if got >= 0 {
+			t.Errorf("%s = %d, but every GWL index is negative", name, got)
+		}
+	}
+	// The exact values, because a wrong one reads or writes a DIFFERENT field
+	// of the window and the effect is silent.
+	if GWLExStyle != -20 || GWLStyle != -16 || GWLWndProc != -4 {
+		t.Fatalf("GWL indices drifted: exstyle=%d style=%d wndproc=%d",
+			GWLExStyle, GWLStyle, GWLWndProc)
+	}
+}
+
+func TestRasterOpConstants(t *testing.T) {
+	// CAPTUREBLT is the flag without which a screen capture silently omits
+	// every layered (transparent) window.
+	if CaptureBLT != 0x40000000 {
+		t.Fatalf("CAPTUREBLT = %#x", CaptureBLT)
+	}
+	if SRCCOPY != 0x00CC0020 {
+		t.Fatalf("SRCCOPY = %#x", SRCCOPY)
+	}
+	if Blackness != 0x00000042 || Whiteness != 0x00FF0062 {
+		t.Fatalf("BLACKNESS=%#x WHITENESS=%#x", Blackness, Whiteness)
+	}
+	// Only HALFTONE averages; the other three drop pixels.
+	if Halftone != 4 {
+		t.Fatalf("HALFTONE = %d", Halftone)
+	}
+}
+
+func TestExtendedStyleConstants(t *testing.T) {
+	for name, tc := range map[string]struct{ got, want uint32 }{
+		"WS_EX_TOPMOST":    {WSExTopmost, 0x00000008},
+		"WS_EX_TOOLWINDOW": {WSExToolWindow, 0x00000080},
+		"WS_EX_LAYERED":    {WSExLayered, 0x00080000},
+		"WS_EX_NOACTIVATE": {WSExNoActivate, 0x08000000},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %#x, want %#x", name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestSetWindowPosFlags(t *testing.T) {
+	// The flags are a bit set: no two may share a bit, or a caller asking for
+	// one silently gets another as well.
+	all := []uint32{SWPNoSize, SWPNoMove, SWPNoZOrder,
+		SWPNoRedraw, SWPNoActivate, SWPFrameChanged,
+		SWPShowWindow, SWPHideWindow, SWPNoOwnerZOrder}
+	var seen uint32
+	for _, f := range all {
+		if f == 0 {
+			t.Fatal("a SetWindowPos flag is zero")
+		}
+		if seen&f != 0 {
+			t.Fatalf("flag %#x overlaps one already seen (%#x)", f, seen)
+		}
+		seen |= f
+	}
+}

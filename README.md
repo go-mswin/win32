@@ -13,10 +13,19 @@ fleet currently hand-rolls in more than one place:
 - `WNDCLASSEXW` / `MSG` / rect / point types and the common `CreateWindowExW`,
   `RegisterClassExW`, `DefWindowProcW`, `LoadCursorW`, `PostQuitMessage`, …
 - top-down 32-bpp BGRA `StretchDIBits` blit helper
+- **device contexts and GDI objects**: `GetDC` / `GetWindowDC` / `ReleaseDC`,
+  `CreateCompatibleDC` / `DeleteDC`, `SelectObject` / `DeleteObject`,
+  `BitBlt` / `StretchBlt` / `PatBlt`, `SetStretchBltMode`, `GetDeviceCaps`
+- **window state and geometry**: `ShowWindow`, `UpdateWindow`,
+  `InvalidateRect`, `SetWindowPos`, `SetForegroundWindow`,
+  `GetForegroundWindow`, `GetWindowRect`, `GetClientRect`, `IsWindow`,
+  `IsWindowVisible`, `IsIconic`, `GetWindowText`, `GetClassName`,
+  `GetWindowLongPtr` / `SetWindowLongPtr` (which `x/sys/windows` does not wrap)
 
 ## Consumers
-`go-widgets/tray`, `go-widgets/window` (win32 backend), and the WinRT plumbing in
-the weft Windows apps — one owned binding instead of duplicated hand-rolls.
+`go-widgets/tray`, `go-widgets/window` (win32 backend), `go-mswin/screencapture`,
+and the WinRT plumbing in the weft Windows apps — one owned binding instead of
+duplicated hand-rolls.
 
 ## License
 BSD-3-Clause — copyright the go-mswin authors.
