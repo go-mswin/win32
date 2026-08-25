@@ -17,7 +17,6 @@ package win32
 
 import (
 	"fmt"
-	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -29,98 +28,13 @@ import (
 var Shcore = windows.NewLazySystemDLL(ShcoreDLL)
 
 var (
-	procEnumDisplayMonitors   = User32.NewProc("EnumDisplayMonitors")
 	procGetMonitorInfoW       = User32.NewProc("GetMonitorInfoW")
 	procEnumDisplayDevicesW   = User32.NewProc("EnumDisplayDevicesW")
 	procMonitorFromWindow     = User32.NewProc("MonitorFromWindow")
 	procSetProcessDPIAwareCtx = User32.NewProc("SetProcessDpiAwarenessContext")
 
 	procGetDpiForMonitor = Shcore.NewProc("GetDpiForMonitor")
-
-	procRtlMoveMemory = Kernel32.NewProc("RtlMoveMemory")
 )
-
-// enum serialises the monitor enumeration and holds the callback currently
-// running.
-//
-// Two things force this. The Go side of a Win32 callback is a PROCESS-WIDE
-// trampoline, so two concurrent enumerations sharing one trampoline would
-// interleave into each other's results. And windows.NewCallback allocates a
-// trampoline that is NEVER collected, so making one per call leaks a page of
-// executable memory per enumeration — a screen chooser that polls would grow
-// without bound. One trampoline, created on first use, dispatching to whatever
-// closure the lock currently protects, has neither problem.
-var enum struct {
-	sync.Mutex
-	fn func(HMONITOR, HDC, Rect) bool
-	// stopped records that fn asked to end the walk, which the OS reports the
-	// same way as a genuine failure.
-	stopped bool
-}
-
-// enumTrampoline is the single MONITORENUMPROC. sync.OnceValue defers the
-// allocation to the first enumeration, so a process that never enumerates
-// displays never pays for it.
-var enumTrampoline = sync.OnceValue(func() uintptr {
-	return windows.NewCallback(func(mon, dc, lprc, _ uintptr) uintptr {
-		if !enum.fn(HMONITOR(mon), HDC(dc), readRect(lprc)) {
-			enum.stopped = true
-			return 0 // the callback asked to stop
-		}
-		return 1
-	})
-})
-
-// readRect copies a RECT out of OS memory at p.
-//
-// The address arrives as a plain uintptr — it is an argument of a C callback,
-// not a Go pointer — and turning it back into a *Rect is exactly the
-// conversion go vet's unsafeptr check exists to catch: nothing keeps that
-// memory alive across a garbage collection, and the OS may reuse it the moment
-// the callback returns. RtlMoveMemory copies it instead, so no uintptr ever
-// becomes a pointer on the Go side. A RECT is 16 bytes; this is not a hot
-// path.
-func readRect(p uintptr) Rect {
-	var r Rect
-	if p == 0 {
-		return r
-	}
-	procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&r)), p, unsafe.Sizeof(r))
-	return r
-}
-
-// EnumDisplayMonitors calls fn once for each monitor on the desktop, in the
-// order the OS reports them — which is NOT primary-first and carries no
-// meaning; sort by whatever the caller needs.
-//
-// rect is the monitor's full rectangle on the virtual screen, the same one
-// [GetMonitorInfo] returns as RcMonitor. dc is 0, because the enumeration is
-// started without a device context; it is passed through so the signature
-// matches MONITORENUMPROC and can grow a clipping variant later.
-//
-// Returning false from fn stops the enumeration early and is not an error.
-//
-// Calls are serialised against each other: the OS callback is a process-wide
-// trampoline, so fn must not itself call EnumDisplayMonitors.
-func EnumDisplayMonitors(fn func(mon HMONITOR, dc HDC, rect Rect) bool) error {
-	if fn == nil {
-		return fmt.Errorf("win32: EnumDisplayMonitors: nil callback")
-	}
-	enum.Lock()
-	defer enum.Unlock()
-	enum.fn, enum.stopped = fn, false
-	defer func() { enum.fn = nil }()
-
-	r, _, _ := procEnumDisplayMonitors.Call(0, 0, enumTrampoline(), 0)
-	if r == 0 && !enum.stopped {
-		// EnumDisplayMonitors returns FALSE both when the callback stopped it
-		// and when it genuinely failed, and does not distinguish them. A
-		// callback that asked to stop got what it asked for, so only a
-		// callback that did not is a failure worth reporting.
-		return lastErr("EnumDisplayMonitors")
-	}
-	return nil
-}
 
 // GetMonitorInfo describes one monitor: its bounds, its work area, whether it
 // is the primary one and what GDI calls it.

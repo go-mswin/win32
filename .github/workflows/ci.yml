@@ -11,6 +11,20 @@ permissions:
   contents: read
 
 jobs:
+  # A workflow that fails to PARSE reports nothing at all: no jobs run, no
+  # checks appear, and a pull request looks unexercised rather than broken.
+  # Every other lane in this file is downstream of the file itself being
+  # readable, so none of them can report that it is not.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
   core:
     name: core (OS-independent, 100% coverage, CGO=0)
     runs-on: ubuntu-latest
