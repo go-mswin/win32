@@ -89,3 +89,79 @@ const (
 	NIFIcon    = 0x2
 	NIFTip     = 0x4
 )
+
+// Extended window styles (winuser.h).
+const (
+	// WSExTopmost keeps the window above every non-topmost window.
+	WSExTopmost = 0x00000008
+	// WSExToolWindow is a floating palette: no taskbar entry, and excluded
+	// from the Alt-Tab list.
+	WSExToolWindow = 0x00000080
+	// WSExLayered enables per-pixel alpha and colour keying. A layered window
+	// is only included in a screen capture when the blit asks for
+	// [CaptureBLT].
+	WSExLayered = 0x00080000
+	// WSExNoActivate keeps the window from taking the foreground when clicked.
+	WSExNoActivate = 0x08000000
+)
+
+// GetWindowLongPtr / SetWindowLongPtr indices (winuser.h). They are NEGATIVE,
+// which is why the wrappers take an int32 and sign-extend rather than making
+// every caller build a uintptr by hand.
+const (
+	GWLWndProc   = -4
+	GWLHInstance = -6
+	GWLID        = -12
+	GWLStyle     = -16
+	GWLExStyle   = -20
+	GWLUserData  = -21
+)
+
+// SetWindowPos flags (winuser.h). SWPNoZOrder and SWPNoActivate are declared
+// with the tray's constants above.
+const (
+	SWPNoSize        = 0x0001
+	SWPNoMove        = 0x0002
+	SWPNoRedraw      = 0x0008
+	SWPFrameChanged  = 0x0020
+	SWPShowWindow    = 0x0040
+	SWPHideWindow    = 0x0080
+	SWPNoOwnerZOrder = 0x0200
+)
+
+// SetWindowPos hWndInsertAfter values (winuser.h). They are handle-shaped
+// NEGATIVE constants, hence the bit expressions rather than plain literals:
+// written this way they are correct on both 64-bit targets. A wrong one does
+// not fail to build — the window simply lands somewhere unexpected in the
+// z-order, or the call silently does nothing.
+const (
+	HWNDTop       HWND = 0
+	HWNDBottom    HWND = 1
+	HWNDTopmost   HWND = ^HWND(0) // -1
+	HWNDNoTopmost HWND = ^HWND(1) // -2
+)
+
+// Raster operations for BitBlt, StretchBlt and PatBlt (wingdi.h). SRCCOPY is
+// declared with the DIB constants above.
+const (
+	// Blackness fills the destination with black using no source. It is the
+	// cheapest way to clear a device context before a PrintWindow, which
+	// COMPOSITES rather than overwriting.
+	Blackness = 0x00000042
+	// Whiteness fills the destination with white.
+	Whiteness = 0x00FF0062
+	// CaptureBLT includes LAYERED windows in the result. Without it, anything
+	// with transparency — which on a modern desktop is most menu and
+	// notification surfaces — is simply absent from a screen capture.
+	CaptureBLT = 0x40000000
+)
+
+// StretchBlt modes (wingdi.h). Only [Halftone] AVERAGES pixels rather than
+// dropping them, which on a downscaled desktop is the difference between
+// readable text and noise. The mode is per-device-context state.
+const (
+	BlackOnWhite = 1
+	WhiteOnBlack = 2
+	ColorOnColor = 3
+	Halftone     = 4
+)
