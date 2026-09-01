@@ -19,7 +19,7 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: actionlint
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
@@ -29,7 +29,7 @@ jobs:
     name: core (OS-independent, 100% coverage, CGO=0)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27.0'
@@ -48,7 +48,7 @@ jobs:
     name: windows (live glue build + core tests, CGO=0)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27.0'
@@ -83,7 +83,7 @@ jobs:
           - { goos: linux, goarch: ppc64le }
           - { goos: linux, goarch: s390x }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27.0'
