@@ -42,6 +42,7 @@ var (
 	procSetWindowLongPtrW    = User32.NewProc("SetWindowLongPtrW")
 	procInvalidateRect       = User32.NewProc("InvalidateRect")
 	procGetWindowThreadPID   = User32.NewProc("GetWindowThreadProcessId")
+	procSetWindowRgn         = User32.NewProc("SetWindowRgn")
 
 	procCreateCompatibleDC = Gdi32.NewProc("CreateCompatibleDC")
 	procDeleteDC           = Gdi32.NewProc("DeleteDC")
@@ -52,6 +53,7 @@ var (
 	procSetStretchBltMode  = Gdi32.NewProc("SetStretchBltMode")
 	procPatBlt             = Gdi32.NewProc("PatBlt")
 	procGetDeviceCaps      = Gdi32.NewProc("GetDeviceCaps")
+	procCreateRectRgn      = Gdi32.NewProc("CreateRectRgn")
 )
 
 // lastErr wraps the calling thread's last Win32 error for op. It is only
@@ -134,6 +136,48 @@ func SelectObject(dc HDC, obj HANDLE) HANDLE {
 func DeleteObject(obj HANDLE) bool {
 	r, _, _ := procDeleteObject.Call(uintptr(obj))
 	return r != 0
+}
+
+// CreateRectRgn creates a rectangular GDI region. The corners are given in the
+// coordinate space of whatever the region will be used against — for
+// [SetWindowRgn] that is the window's own upper-left corner, not the screen's.
+//
+// A region is an ordinary GDI object: destroy an unused one with [DeleteObject]
+// (as HANDLE). Once [SetWindowRgn] has accepted it, it belongs to the system —
+// see there.
+func CreateRectRgn(left, top, right, bottom int32) (HRGN, error) {
+	r, _, _ := procCreateRectRgn.Call(
+		uintptr(left), uintptr(top), uintptr(right), uintptr(bottom))
+	if r == 0 {
+		return 0, lastErr("CreateRectRgn")
+	}
+	return HRGN(r), nil
+}
+
+// SetWindowRgn confines a window to a region: the system draws and delivers
+// mouse input only inside it. A host showing a control that is half-scrolled
+// out of a viewport gives it a region covering the part still in view, so the
+// control is not painted over whatever follows the viewport.
+//
+// Pass rgn == 0 to remove the region and restore the whole window.
+//
+// ⛔ On success the SYSTEM OWNS rgn: it is freed with the window, and the caller
+// must not use or [DeleteObject] it afterwards. On failure ownership stays with
+// the caller, who must destroy it. Either way a region must not be handed to
+// two windows.
+//
+// redraw asks the system to repaint the window immediately, which is what a
+// visible window wants; a window about to be shown does not need it.
+func SetWindowRgn(hwnd HWND, rgn HRGN, redraw bool) error {
+	var rd uintptr
+	if redraw {
+		rd = 1
+	}
+	r, _, _ := procSetWindowRgn.Call(uintptr(hwnd), uintptr(rgn), rd)
+	if r == 0 {
+		return lastErr("SetWindowRgn")
+	}
+	return nil
 }
 
 // BitBlt copies a rectangle of pixels from one device context to another.

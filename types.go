@@ -20,6 +20,8 @@ type (
 	HMENU HANDLE
 	// HDC is a device-context handle.
 	HDC HANDLE
+	// HRGN is a GDI region handle.
+	HRGN HANDLE
 	// HBITMAP is a bitmap handle.
 	HBITMAP HANDLE
 	// HBRUSH is a brush handle.
