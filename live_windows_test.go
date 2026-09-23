@@ -280,3 +280,81 @@ func TestLiveDisplays(t *testing.T) {
 	}
 	t.Log("DISPLAYS_OK")
 }
+
+// regionProc is the plainest window procedure there is: the region probe needs a
+// real window, not a behaviour. Written out rather than passing DefWindowProc to
+// NewCallback directly, matching the other probes in this file.
+func regionProc(hwnd win32.HWND, msg uint32, wParam win32.WPARAM, lParam win32.LPARAM) win32.LRESULT {
+	return win32.DefWindowProc(hwnd, msg, wParam, lParam)
+}
+
+// TestLiveWindowRegion confines a real window to a region and takes it back off,
+// the way a host shows only the part of a control its viewport still shows.
+//
+// A call that returns success proves nothing on its own — a wrong argument count
+// or a mistyped procedure name can return a non-zero value just as readily. So
+// the test carries its own negative control: the SAME call, with the SAME region
+// shape, against a window handle that does not exist, which must FAIL. Success
+// only means something because that failure happens.
+//
+// ⛔ What it does not prove: that the pixels outside the region are actually
+// withheld. That is the system's side of the contract and it takes a framebuffer
+// capture to witness; the geometry that decides the region lives (and is proven)
+// in the consumer.
+func TestLiveWindowRegion(t *testing.T) {
+	if os.Getenv("WIN32_LIVE_REGION") != "1" {
+		t.Skip("set WIN32_LIVE_REGION=1 to run the live SetWindowRgn round-trip on Windows")
+	}
+	className, _ := win32.UTF16PtrFromString("GoMSWinRegionProbe")
+	title, _ := win32.UTF16PtrFromString("go-mswin/win32 region probe")
+	inst := win32.GetModuleHandle(nil)
+	wc := win32.WndClassExW{
+		CbSize:        uint32(unsafe.Sizeof(win32.WndClassExW{})),
+		LpfnWndProc:   win32.NewCallback(regionProc),
+		HInstance:     inst,
+		HCursor:       win32.LoadCursor(0, win32.IDCArrow),
+		LpszClassName: className,
+	}
+	if _, err := win32.RegisterClassEx(&wc); err != nil {
+		t.Fatalf("RegisterClassEx: %v", err)
+	}
+	// Never shown: a region is set before a control is drawn, not after.
+	hwnd, err := win32.CreateWindowEx(0, className, title, win32.WSOverlappedWindow,
+		100, 100, 240, 160, 0, 0, inst, nil)
+	if err != nil {
+		t.Fatalf("CreateWindowEx: %v", err)
+	}
+	defer win32.DestroyWindow(hwnd)
+
+	// The top 40 rows of a 160-row window: a control scrolled most of the way
+	// out of its viewport, with only its head still in view.
+	rgn, err := win32.CreateRectRgn(0, 0, 240, 40)
+	if err != nil {
+		t.Fatalf("CreateRectRgn: %v", err)
+	}
+	if err := win32.SetWindowRgn(hwnd, rgn, false); err != nil {
+		// Ownership did not transfer, so this region is still ours to destroy.
+		win32.DeleteObject(win32.HANDLE(rgn))
+		t.Fatalf("SetWindowRgn on a real window: %v", err)
+	}
+	// rgn now belongs to the system — deliberately not deleted here.
+
+	// The negative control. Same shape, same call, a handle that is not a window.
+	bad, err := win32.CreateRectRgn(0, 0, 240, 40)
+	if err != nil {
+		t.Fatalf("CreateRectRgn (control): %v", err)
+	}
+	if err := win32.SetWindowRgn(win32.HWND(0xDEAD), bad, false); err == nil {
+		t.Error("SetWindowRgn accepted a handle that is not a window: " +
+			"a success against the real window proves nothing")
+	} else {
+		t.Logf("negative control refused as it must: %v", err)
+	}
+	win32.DeleteObject(win32.HANDLE(bad)) // the failed call kept ownership with us
+
+	// And it comes back off: a control scrolled fully into view is drawn whole.
+	if err := win32.SetWindowRgn(hwnd, 0, false); err != nil {
+		t.Errorf("SetWindowRgn(0) did not remove the region: %v", err)
+	}
+	t.Log("REGION set, negative control refused, region removed")
+}
