@@ -34,6 +34,17 @@ fleet currently hand-rolls in more than one place:
   `IsWindowVisible`, `IsIconic`, `GetWindowText`, `GetClassName`,
   `GetWindowLongPtr` / `SetWindowLongPtr` (which `x/sys/windows` does not wrap),
   `GetWindowThreadProcessID`
+- **network connections (mpr.dll)**: `AddConnection(remote, local, user,
+  password, flags)` over `WNetAddConnection2W` and `CancelConnection(name,
+  force)`, with the credentials passed as API arguments (never on a command
+  line) and the password buffer wiped after the call; `MapSMB` for the
+  Windows 11 24H2 alternative TCP port, which no WNet flag exposes and which is
+  reached through the WMI method `MSFT_SmbMapping.Create` over COM; `SMBRemote`
+  and `DAVRemote` build the UNC names (`\\host@SSL@port\DavWWWRoot` for WebDAV
+  through the WebClient service). Measured results, with error codes, in
+  `win32-wnet-vm-proof-2026-11-16.txt`: plain WNet cannot leave port 445,
+  `MapSMB` can (with a `.\user` account), and WebDAV works on any port over
+  HTTPS or, with `BasicAuthLevel=2`, over HTTP.
 
 ## Consumers
 `go-widgets/tray`, `go-widgets/window` (win32 backend), `go-mswin/screencapture`,
