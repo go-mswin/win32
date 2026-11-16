@@ -1,0 +1,34 @@
+MapSMB as a STANDARD (non-administrator) user: measured
+=======================================================
+
+Machine: Windows 11 Pro 25H2, 10.0.26200 arm64 (QEMU/HVF), same VM as
+win32-wnet-vm-proof-2026-11-16.txt. Server: github.com/go-filesystems/smb
+v0.11.0, share "theca", user alice, on 127.0.0.1:4455, started by the test
+user itself.
+
+How it ran without elevation: a new local user `std` (member of Users only;
+the Administrators group holds Administrator, dev and reader). The test ran
+through ssh password logon as std, so the process has a Medium mandatory level
+token: `whoami /groups` shows "Medium Mandatory Level", and the script printed
+`elevated: False` (WindowsBuiltInRole.Administrator). No UAC elevation and no
+scheduled task was involved.
+
+Results (probe.exe from go-mswin-win32-wnet-probe, built on win32.MapSMB):
+  MapSMB .\alice, TcpPort 4455, drive Z:   OK (exit 0); Z:\hello.txt readable;
+                                           CancelConnection OK code 0
+  MapSMB .\alice, TcpPort 4455, no drive   OK (exit 0)
+  plain \\127.0.0.1\theca after MapSMB     OK: a UNC read returns the file,
+                                           and win32.AddConnection to Y: with
+                                           no port succeeds (code 0) and reads it
+  New-SmbMapping -TcpPort 4455 (control)   OK
+
+Conclusion: MSFT_SmbMapping.Create with TcpPort does NOT need administrator
+rights on this build, contrary to the "Admin permissions" prerequisite listed
+at learn.microsoft.com/en-us/windows-server/storage/file-server/smb-ports.
+The WebDAV-over-HTTPS fallback with a CurrentUser Root certificate was not
+measured, because the condition for it (failure without administrator rights)
+did not occur.
+
+Not measured: a mapping made from the interactive desktop session of a standard
+user (an ssh logon has its own logon session, so the drive letter is not
+visible to Explorer there); the stock `net use /TCPPORT`; SMB over QUIC.
