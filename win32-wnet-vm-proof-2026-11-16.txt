@@ -1,0 +1,81 @@
+win32 WNet / alternative SMB port / WebDAV: measured on a real Windows 11 arm64
+============================================================================
+
+Machine: Windows 11 Pro 25H2, 10.0.26200 (>= 24H2), QEMU 11.1.2 + HVF on Apple
+silicon (VM at ~/VMs/win11-arm64; run-notpm.sh, because on QEMU 11.1.2 /
+macOS 27 `-device tpm-tis-device` aborts with HV_BAD_ARGUMENT at
+hvf-all.c:123). Session: ssh as the local administrator `reader`.
+Binaries: GOOS=windows GOARCH=arm64 CGO_ENABLED=0, copied over scp.
+Server: github.com/go-filesystems/smb v0.11.0 on osfs (share "theca", user
+alice) and golang.org/x/net/webdav behind a Basic-auth wrapper (a test double
+with the same Basic challenge Theca would serve). Passwords came from files.
+The probe program is a separate module (go-mswin-win32-wnet-probe, not part of
+this repository because it pulls the SMB server in).
+
+(a) win32.AddConnection (WNetAddConnection2W), SMB
+--------------------------------------------------
+\\127.0.0.1\theca                 code 86   ERROR_INVALID_PASSWORD  -- it dialled
+                                            port 445, i.e. Windows' own
+                                            LanmanServer (pid 4), which does not
+                                            know alice
+\\127.0.0.1@4455\theca            code 67   ERROR_BAD_NET_NAME
+\\127.0.0.1:4455\theca            code 67   ERROR_BAD_NET_NAME
+\\127.0.0.1@SSL@4455\theca        code 67   ERROR_BAD_NET_NAME
+SMBClient/Connectivity event 30800: "The server name cannot be resolved ...
+Server name: 127.0.0.1@4455": the "@port" text is treated as part of the host
+name by the SMB provider. Event 30830 for the port-less name: "Server socket
+address: 127.0.0.1:445, Port Origin: The port was selected from the global
+registry settings".
+CancelConnection of a drive that does not exist: code 2250
+ERROR_NOT_CONNECTED (exposed as win32.IsNotConnected).
+=> WNetAddConnection2W cannot select an SMB port.
+
+(b) alternative port, win32.MapSMB (MSFT_SmbMapping.Create, TcpPort)
+--------------------------------------------------------------------
+New-SmbMapping -TcpPort 4455 and MapSMB share the CIM method; Create's
+parameters (read with Get-CimClass): TcpPort, QuicPort, RdmaPort, UserName,
+Password, LocalPath, RemotePath, Persistent, ... UInt16 ports.
+  user "alice" (bare)             Win32 1312 ERROR_NO_SUCH_LOGON_SESSION
+                                  (SMBClient/Security event 31001, status
+                                  0xC000005F, raised by the client's own
+                                  InitializeSecurityContext, before any
+                                  authentication reaches the server)
+  user ".\alice"                  OK; Z:\hello.txt readable
+  user "WORKGROUP\alice"          OK
+  user "DESKTOP-K7LSB8O\alice"    OK
+  user "alice@theca"              Win32 86 (password not correct)
+  wrong password                  Win32 1326 ERROR_LOGON_FAILURE
+  nothing listening on the port   Win32 64 ERROR_NETNAME_DELETED
+  127.0.0.1:4455 and 10.0.2.15:4457 (the NIC address) both map with
+  ".\alice" (event 30830 "Server socket address: 127.0.0.1:4455 ... Port
+  Origin: net use parameters"). A silent TCP listener on 127.0.0.1:4458 saw
+  the redirector connect twice and time out (64). 127.0.0.2:4456 (second
+  loopback) failed with 1231 ERROR_NETWORK_UNREACHABLE using the bare user
+  name and was not retried with ".\alice": unresolved.
+Dialect negotiated: 3.0.2. After a MapSMB connection exists, a port-less
+\\127.0.0.1\theca (WNet drive Y:, and a plain UNC read) reuses it: OK.
+Reached from Go without a child process: win32.MapSMB (WMI COM, vtable calls);
+errors carry HRESULT 0x80041001 and the provider's Win32 code.
+Administrator rights: the documentation lists them as a prerequisite; every
+run here was administrator. A standard-user run was not measured.
+
+(c) WebDAV through WebClient (win32.AddConnection with win32.DAVRemote)
+-----------------------------------------------------------------------
+WebClient service: Stopped / Manual at start; started with Start-Service.
+Default BasicAuthLevel = 1 (SSL only).
+                                          BasicAuthLevel=1   BasicAuthLevel=2
+http  \\127.0.0.1@8080\DavWWWRoot  alice  67 BAD_NET_NAME     OK
+http  same, user ".\alice"                67                 1244 NOT_AUTHENTICATED
+https \\127.0.0.1@SSL@8443\DavWWWRoot     OK                 OK
+https \\localhost@SSL@8443\DavWWWRoot     OK                 OK
+With level 1 over HTTP the server saw one OPTIONS without Authorization and
+nothing more: the redirector refuses before sending credentials. HTTPS worked
+only because the self-signed certificate (SAN 127.0.0.1, localhost) had been
+imported into Cert:\LocalMachine\Root (administrator). The Basic user name must
+be plain: ".\alice" gives 1244 (the server's Basic check receives ".\alice").
+BasicAuthLevel was set to 2 for the second column and removed afterwards;
+WebClient restarted after each change.
+
+Unit tests on the VM: TestAddConnectionRefusesBeforeCalling,
+TestAddConnectionReportsTheRouterCode, TestCancelConnectionNotConnected,
+TestMapSMBRefusesBadInput: PASS (windows/arm64).
