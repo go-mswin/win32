@@ -65,6 +65,35 @@ jobs:
         env:
           CGO_ENABLED: '0'
 
+  # Windows ARM64 on a real arm64 runner: the Go runtime's callback entry does
+  # not preserve D8-D15 (golang/go#82503), which wincb repairs. Its control test
+  # proves the probe can see a clobber, its thunk test proves wincb removes it.
+  # A run that did not PASS the named tests fails the step.
+  windows-arm64:
+    name: windows arm64 (callback registers D8-D15)
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.4'
+      - name: Callback thunk keeps D8-D15
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go vet ./...
+          go test -count=1 -v ./... *> arm64.txt
+          $rc = $LASTEXITCODE
+          Get-Content arm64.txt
+          if ($rc -ne 0) { exit $rc }
+          foreach ($t in 'TestControlCalleeClobbersCallerDoubles', 'TestThunkPreservesCallerDoubles', 'TestEverySlotReachesItsOwnTarget') {
+            if (-not (Select-String -Path arm64.txt -Pattern "^--- PASS: $t ")) {
+              Write-Error "$t did not run to a PASS"
+              exit 1
+            }
+          }
+
   cross:
     name: cross-build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

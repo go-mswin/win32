@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/go-mswin/win32/wincb"
 	"golang.org/x/sys/windows"
 )
 
@@ -47,12 +48,17 @@ var (
 )
 
 // NewCallback wraps a window procedure so it can be stored in
-// WndClassExW.LpfnWndProc. It is a thin passthrough to windows.NewCallback,
-// which allocates a non-collectable trampoline — so create the callback ONCE
-// per window class, never per message. fn must be
+// WndClassExW.LpfnWndProc, or any other function native code calls back (a
+// subclass procedure, a timer, a hook, a COM method). It goes through
+// [wincb.New]: windows.NewCallback, plus — on windows/arm64, where the Go
+// runtime's callback entry does not preserve the callee-saved D8-D15
+// (golang/go#82503) — a thunk that does. The allocation is non-collectable and
+// process-wide limited (see the wincb package), so create the callback ONCE per
+// window class, never per message. fn must be
 // func(hwnd HWND, msg uint32, wParam WPARAM, lParam LPARAM) LRESULT (or an
-// all-uintptr-width equivalent windows.NewCallback accepts).
-func NewCallback(fn any) uintptr { return windows.NewCallback(fn) }
+// all-uintptr-width equivalent windows.NewCallback accepts, at most eight
+// arguments).
+func NewCallback(fn any) uintptr { return wincb.New(fn) }
 
 // UTF16PtrFromString is a convenience passthrough so consumers reach one import
 // for the whole backend. It returns a pointer to a NUL-terminated UTF-16
