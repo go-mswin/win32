@@ -49,6 +49,13 @@ func TestEverySlotReachesItsOwnTarget(t *testing.T) {
 	mu.Lock()
 	start := next
 	mu.Unlock()
+	// Give the slots back, so the tests that run after this one can make
+	// callbacks: the entries made here are not used again.
+	defer func() {
+		mu.Lock()
+		next = start
+		mu.Unlock()
+	}()
 	var entries []uintptr
 	for i := start; i < Slots; i++ {
 		entries = append(entries, wrap(clobberAddr()))
