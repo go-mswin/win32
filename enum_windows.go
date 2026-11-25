@@ -25,7 +25,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"golang.org/x/sys/windows"
+	"github.com/go-mswin/win32/wincb"
 )
 
 var (
@@ -58,7 +58,7 @@ var enum struct {
 // allocation to the first enumeration, so a process that never enumerates
 // displays never pays for it.
 var monitorTrampoline = sync.OnceValue(func() uintptr {
-	return windows.NewCallback(func(mon, dc, lprc, _ uintptr) uintptr {
+	return wincb.New(func(mon, dc, lprc, _ uintptr) uintptr {
 		if !enum.monitor(HMONITOR(mon), HDC(dc), readRect(lprc)) {
 			enum.stopped = true
 			return 0 // the callback asked to stop
@@ -121,7 +121,7 @@ func EnumDisplayMonitors(fn func(mon HMONITOR, dc HDC, rect Rect) bool) error {
 // windowTrampoline is the single WNDENUMPROC, allocated on first use for the
 // same reason monitorTrampoline is.
 var windowTrampoline = sync.OnceValue(func() uintptr {
-	return windows.NewCallback(func(hwnd, _ uintptr) uintptr {
+	return wincb.New(func(hwnd, _ uintptr) uintptr {
 		if !enum.window(HWND(hwnd)) {
 			enum.stopped = true
 			return 0 // the callback asked to stop

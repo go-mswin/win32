@@ -22,6 +22,18 @@ fleet currently hand-rolls in more than one place:
   a pool the runtime caps at 2000 and going past it is `runtime.throw`, not a
   recoverable panic — so a wrapper that builds its callback per call puts a
   hard ceiling on how many times an application may ask, and then kills it
+- **callbacks that native code can call safely** (`win32.NewCallback`, and the
+  public package `github.com/go-mswin/win32/wincb`, for window procedures,
+  subclass procedures, timers, hooks, enumeration procedures and COM vtables):
+  on windows/arm64 the Go runtime's callback entry does not preserve the
+  callee-saved registers D8-D15 ([golang/go#82503](https://github.com/golang/go/issues/82503)),
+  so a plain `syscall.NewCallback` pointer can hand the native caller back
+  clobbered doubles (UI Automation then read every bounding rectangle as
+  `0,0 0x0`). `wincb.New` is `syscall.NewCallback` plus a thunk that saves and
+  restores them; elsewhere it is `syscall.NewCallback` itself. Budget: the
+  runtime allows 2000 callbacks per process, never freed; on arm64 `wincb`
+  allows `wincb.Slots` (512) of them and panics past that, so create each one
+  once. At most eight arguments, all in registers
 - **display enumeration**: `GetMonitorInfo` (`MONITORINFOEXW`, `cbSize` set for
   you — a wrong one is silently rejected), `EnumDisplayDevices` /
   `DisplayAdapters` / `DisplayMonitors` for the adapter and panel names,
